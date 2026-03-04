@@ -1,17 +1,13 @@
 """
 FastAPI Backend
 ================
-Implements exact API schema from the SHL assignment:
+Implements SHL assignment API schema
 
-  GET  /health         → {"status": "healthy"}
-  POST /recommend      → {"recommended_assessments": [...]}
+Endpoints:
+GET  /health
+POST /recommend
 
-Run:
-  uvicorn api.main:app --host 0.0.0.0 --port 8000
-
-Environment:
-  GEMINI_API_KEY=your_key
-  MAX_RESULTS=10
+Also serves the frontend UI (index.html).
 """
 
 import logging
@@ -19,42 +15,72 @@ import time
 import os
 from contextlib import asynccontextmanager
 from typing import Optional
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, validator
+
+
+# --------------------------------------------------
+# Logging
+# --------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s"
 )
+
 logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------
+# Global pipeline
+# --------------------------------------------------
 
 _pipeline = None
 
 
+# --------------------------------------------------
+# Startup lifecycle
+# --------------------------------------------------
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load search engine at startup."""
+
     global _pipeline
+
     logger.info("🚀 Loading SHL Recommendation Engine...")
     start = time.time()
 
     from retrieval.pipeline import recommend as _recommend
+
     _pipeline = _recommend
 
     logger.info(f"✅ Engine loaded in {time.time() - start:.1f}s")
+
     yield
+
     logger.info("🛑 Shutting down")
 
 
+# --------------------------------------------------
+# FastAPI app
+# --------------------------------------------------
+
 app = FastAPI(
     title="SHL Assessment Recommendation API",
-    description="RAG + LLM powered SHL assessment recommendation system.",
+    description="AI-powered SHL assessment recommendation system using RAG + LLM",
     version="1.0.0",
-    lifespan=lifespan,
+    lifespan=lifespan
 )
+
+
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,34 +91,19 @@ app.add_middleware(
 )
 
 
-# ─────────────────────────────────────────────
-# Serve Frontend (THIS FIXES YOUR PROBLEM)
-# ─────────────────────────────────────────────
-
-from pathlib import Path
+# --------------------------------------------------
+# Serve Frontend
+# --------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent
-INDEX_FILE = BASE_DIR / "index.html"
+
+# This makes FastAPI serve index.html automatically
+app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="frontend")
 
 
-@app.get("/")
-async def serve_home():
-    return FileResponse(INDEX_FILE)
-
-
-@app.get("/index.html")
-async def serve_index():
-    return FileResponse(INDEX_FILE)
-
-
-@app.get("/index.html")
-async def serve_index():
-    return FileResponse("api/index.html")
-
-
-# ─────────────────────────────────────────────
-# Request Models
-# ─────────────────────────────────────────────
+# --------------------------------------------------
+# Request / Response Models
+# --------------------------------------------------
 
 class RecommendRequest(BaseModel):
     query: str
@@ -118,14 +129,17 @@ class RecommendResponse(BaseModel):
     recommended_assessments: list[AssessmentResponse]
 
 
-# ─────────────────────────────────────────────
+# --------------------------------------------------
 # Logging Middleware
-# ─────────────────────────────────────────────
+# --------------------------------------------------
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+
     start = time.time()
+
     response = await call_next(request)
+
     duration = time.time() - start
 
     logger.info(
@@ -136,14 +150,19 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-# ─────────────────────────────────────────────
-# API Endpoints
-# ─────────────────────────────────────────────
+# --------------------------------------------------
+# Health Check
+# --------------------------------------------------
 
 @app.get("/health")
 async def health_check():
+
     return {"status": "healthy"}
 
+
+# --------------------------------------------------
+# Recommendation API
+# --------------------------------------------------
 
 @app.post("/recommend", response_model=RecommendResponse)
 async def recommend_assessments(request: RecommendRequest):
@@ -155,38 +174,45 @@ async def recommend_assessments(request: RecommendRequest):
         )
 
     try:
+
         max_results = int(os.getenv("MAX_RESULTS", "10"))
         max_results = min(max(max_results, 1), 10)
 
-        logger.info(f"Recommendation request: query='{request.query[:80]}...'")
+        logger.info(f"Recommendation query: {request.query[:80]}...")
 
         result = _pipeline(
             query=request.query,
             max_results=max_results,
             min_results=1,
             retrieval_top_k=30,
-            use_llm=True,
+            use_llm=True
         )
 
         assessments = result.get("recommended_assessments", [])
+
         assessments = assessments[:10]
 
-        return RecommendResponse(recommended_assessments=assessments)
+        return RecommendResponse(
+            recommended_assessments=assessments
+        )
 
     except Exception as e:
-        logger.error(f"Recommendation failed: {e}", exc_info=True)
+
+        logger.error("Recommendation failed", exc_info=True)
+
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
 
 
-# ─────────────────────────────────────────────
+# --------------------------------------------------
 # Error Handlers
-# ─────────────────────────────────────────────
+# --------------------------------------------------
 
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
+
     return JSONResponse(
         status_code=404,
         content={"error": "Endpoint not found"}
@@ -195,23 +221,29 @@ async def not_found(request: Request, exc):
 
 @app.exception_handler(422)
 async def validation_error(request: Request, exc):
+
     return JSONResponse(
         status_code=422,
-        content={"error": "Validation error", "detail": str(exc)}
+        content={
+            "error": "Validation error",
+            "detail": str(exc)
+        }
     )
 
 
-# ─────────────────────────────────────────────
-# Dev Entry
-# ─────────────────────────────────────────────
+# --------------------------------------------------
+# Local Dev Run
+# --------------------------------------------------
 
 if __name__ == "__main__":
+
     import uvicorn
+
     uvicorn.run(
         "api.main:app",
         host="0.0.0.0",
         port=int(os.getenv("PORT", "8000")),
         reload=False,
         workers=1,
-        log_level="info",
+        log_level="info"
     )
