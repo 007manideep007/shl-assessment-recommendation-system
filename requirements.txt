@@ -3,22 +3,21 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 pydantic==2.7.1
 
+# ─── Core ML dependencies (install first) ─────────────────────
+numpy==1.26.4
+scikit-learn==1.4.2
+
+# ─── Embeddings & Retrieval ──────────────────────────────────
+sentence-transformers==3.0.1
+faiss-cpu==1.12.0
+
 # ─── HTTP & Scraping ─────────────────────────────────────────
 requests==2.31.0
 beautifulsoup4==4.12.3
 lxml==5.2.1
 
-# ─── Embeddings & Retrieval ──────────────────────────────────
-sentence-transformers==3.0.1
-faiss-cpu==1.12.0
-numpy==1.26.4
-scikit-learn==1.4.2
-
-# ─── LLM Client (Gemini via REST — no heavy SDK needed) ──────
-# Using requests directly for Gemini API (already included above)
-
 # ─── Data processing ─────────────────────────────────────────
 pandas==2.2.2
 
-# ─── Logging & Monitoring ────────────────────────────────────
+# ─── Env config ──────────────────────────────────────────────
 python-dotenv==1.0.1
