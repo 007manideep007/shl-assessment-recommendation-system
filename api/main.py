@@ -54,8 +54,8 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Loading SHL Recommendation Engine...")
     start = time.time()
 
+    # Import pipeline once during startup
     from retrieval.pipeline import recommend as _recommend
-
     _pipeline = _recommend
 
     logger.info(f"✅ Engine loaded in {time.time() - start:.1f}s")
@@ -71,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SHL Assessment Recommendation API",
-    description="AI-powered SHL assessment recommendation system using RAG + LLM",
+    description="AI-powered SHL assessment recommendation system using RAG",
     version="1.0.0",
     lifespan=lifespan
 )
@@ -186,12 +186,13 @@ async def recommend_assessments(request: RecommendRequest):
 
         logger.info(f"Recommendation query: {request.query[:80]}...")
 
+        # ⚡ Optimized pipeline call (LLM disabled)
         result = _pipeline(
             query=request.query,
             max_results=max_results,
             min_results=1,
-            retrieval_top_k=30,
-            use_llm=True
+            retrieval_top_k=10,   # reduced workload
+            use_llm=False         # disable slow LLM calls
         )
 
         assessments = result.get("recommended_assessments", [])
