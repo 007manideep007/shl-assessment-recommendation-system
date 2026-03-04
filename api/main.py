@@ -69,10 +69,20 @@ app.add_middleware(
 # Serve Frontend (THIS FIXES YOUR PROBLEM)
 # ─────────────────────────────────────────────
 
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+INDEX_FILE = BASE_DIR / "index.html"
+
+
 @app.get("/")
 async def serve_home():
-    """Serve the web UI."""
-    return FileResponse("api/index.html")
+    return FileResponse(INDEX_FILE)
+
+
+@app.get("/index.html")
+async def serve_index():
+    return FileResponse(INDEX_FILE)
 
 
 @app.get("/index.html")
