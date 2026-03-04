@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+data/
+embeddings/
+evaluation/results.json
+submissions/
+*.faiss
+*.pkl
+*.bin
+.env
