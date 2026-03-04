@@ -19,8 +19,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, validator
 
 
@@ -96,9 +95,17 @@ app.add_middleware(
 # --------------------------------------------------
 
 BASE_DIR = Path(__file__).resolve().parent
+INDEX_FILE = BASE_DIR / "index.html"
 
-# This makes FastAPI serve index.html automatically
-app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="frontend")
+
+@app.get("/")
+async def serve_home():
+    return FileResponse(INDEX_FILE)
+
+
+@app.get("/index.html")
+async def serve_index():
+    return FileResponse(INDEX_FILE)
 
 
 # --------------------------------------------------
@@ -156,7 +163,6 @@ async def log_requests(request: Request, call_next):
 
 @app.get("/health")
 async def health_check():
-
     return {"status": "healthy"}
 
 
