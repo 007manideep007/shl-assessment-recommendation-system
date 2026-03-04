@@ -192,7 +192,7 @@ async def recommend_assessments(request: RecommendRequest):
                 query=request.query,
                 max_results=max_results,
                 min_results=1,
-                retrieval_top_k=5,   # lighter workload
+                retrieval_top_k=15,   # lighter workload
                 use_llm=False        # disable slow LLM calls
             ),
             timeout=15
