@@ -10,8 +10,8 @@ Run:
   uvicorn api.main:app --host 0.0.0.0 --port 8000
 
 Environment:
-  GEMINI_API_KEY=your_key   (for LLM features)
-  MAX_RESULTS=10            (optional override)
+  GEMINI_API_KEY=your_key
+  MAX_RESULTS=10
 """
 
 import logging
@@ -22,7 +22,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, validator
 
 logging.basicConfig(
@@ -31,18 +31,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Global state ──────────────────────────────────────────────────────────────
 _pipeline = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load search engine at startup (heavy operation, done once)."""
+    """Load search engine at startup."""
     global _pipeline
     logger.info("🚀 Loading SHL Recommendation Engine...")
     start = time.time()
 
-    # Import here to avoid circular imports at module level
     from retrieval.pipeline import recommend as _recommend
     _pipeline = _recommend
 
@@ -51,13 +49,9 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Shutting down")
 
 
-# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="SHL Assessment Recommendation API",
-    description=(
-        "Intelligent assessment recommendation system using RAG + LLM. "
-        "Returns relevant SHL Individual Test Solutions for a given query or JD."
-    ),
+    description="RAG + LLM powered SHL assessment recommendation system.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -71,7 +65,25 @@ app.add_middleware(
 )
 
 
-# ── Request / Response Models ─────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Serve Frontend (THIS FIXES YOUR PROBLEM)
+# ─────────────────────────────────────────────
+
+@app.get("/")
+async def serve_home():
+    """Serve the web UI."""
+    return FileResponse("api/index.html")
+
+
+@app.get("/index.html")
+async def serve_index():
+    return FileResponse("api/index.html")
+
+
+# ─────────────────────────────────────────────
+# Request Models
+# ─────────────────────────────────────────────
+
 class RecommendRequest(BaseModel):
     query: str
 
@@ -85,10 +97,10 @@ class RecommendRequest(BaseModel):
 class AssessmentResponse(BaseModel):
     url: str
     name: str
-    adaptive_support: str        # "Yes" | "No"
+    adaptive_support: str
     description: str
-    duration: Optional[int]      # minutes, can be null
-    remote_support: str          # "Yes" | "No"
+    duration: Optional[int]
+    remote_support: str
     test_type: list[str]
 
 
@@ -96,49 +108,40 @@ class RecommendResponse(BaseModel):
     recommended_assessments: list[AssessmentResponse]
 
 
-# ── Middleware: request logging ───────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Logging Middleware
+# ─────────────────────────────────────────────
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start = time.time()
     response = await call_next(request)
     duration = time.time() - start
+
     logger.info(
         f"{request.method} {request.url.path} → {response.status_code} "
         f"({duration:.3f}s)"
     )
+
     return response
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# API Endpoints
+# ─────────────────────────────────────────────
 
 @app.get("/health")
 async def health_check():
-    """
-    Health check endpoint.
-    Returns {"status": "healthy"} when the service is running.
-    """
     return {"status": "healthy"}
 
 
 @app.post("/recommend", response_model=RecommendResponse)
 async def recommend_assessments(request: RecommendRequest):
-    """
-    Assessment recommendation endpoint.
 
-    Accepts a natural language query, job description text, or URL.
-    Returns 1–10 relevant SHL Individual Test Solutions.
-
-    Request body:
-        {"query": "your query or JD text or URL"}
-
-    Response:
-        {"recommended_assessments": [{url, name, adaptive_support,
-          description, duration, remote_support, test_type}, ...]}
-    """
     if _pipeline is None:
         raise HTTPException(
             status_code=503,
-            detail="Recommendation engine not yet initialized. Please retry."
+            detail="Recommendation engine not yet initialized."
         )
 
     try:
@@ -156,13 +159,7 @@ async def recommend_assessments(request: RecommendRequest):
         )
 
         assessments = result.get("recommended_assessments", [])
-
-        # Enforce API contract: 1 ≤ count ≤ 10
         assessments = assessments[:10]
-
-        if not assessments:
-            logger.warning("No recommendations generated")
-            # Return empty list (not an error — valid response)
 
         return RecommendResponse(recommended_assessments=assessments)
 
@@ -174,10 +171,16 @@ async def recommend_assessments(request: RecommendRequest):
         )
 
 
-# ── Error handlers ────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Error Handlers
+# ─────────────────────────────────────────────
+
 @app.exception_handler(404)
 async def not_found(request: Request, exc):
-    return JSONResponse(status_code=404, content={"error": "Endpoint not found"})
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Endpoint not found"}
+    )
 
 
 @app.exception_handler(422)
@@ -188,7 +191,10 @@ async def validation_error(request: Request, exc):
     )
 
 
-# ── Dev entry point ───────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+# Dev Entry
+# ─────────────────────────────────────────────
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
@@ -196,6 +202,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=int(os.getenv("PORT", "8000")),
         reload=False,
-        workers=1,       # single worker: FAISS index not fork-safe
+        workers=1,
         log_level="info",
     )
