@@ -10,7 +10,7 @@ lxml==5.2.1
 
 # ─── Embeddings & Retrieval ──────────────────────────────────
 sentence-transformers==3.0.1
-faiss-cpu==1.8.0
+faiss-cpu==1.12.0
 numpy==1.26.4
 scikit-learn==1.4.2
 
