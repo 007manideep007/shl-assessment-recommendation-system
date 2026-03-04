@@ -13,6 +13,7 @@ Also serves the frontend UI (index.html).
 import logging
 import time
 import os
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Optional
 from pathlib import Path
@@ -54,7 +55,6 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Loading SHL Recommendation Engine...")
     start = time.time()
 
-    # Import pipeline once during startup
     from retrieval.pipeline import recommend as _recommend
     _pipeline = _recommend
 
@@ -144,14 +144,11 @@ class RecommendResponse(BaseModel):
 async def log_requests(request: Request, call_next):
 
     start = time.time()
-
     response = await call_next(request)
-
     duration = time.time() - start
 
     logger.info(
-        f"{request.method} {request.url.path} → {response.status_code} "
-        f"({duration:.3f}s)"
+        f"{request.method} {request.url.path} → {response.status_code} ({duration:.3f}s)"
     )
 
     return response
@@ -173,6 +170,8 @@ async def health_check():
 @app.post("/recommend", response_model=RecommendResponse)
 async def recommend_assessments(request: RecommendRequest):
 
+    global _pipeline
+
     if _pipeline is None:
         raise HTTPException(
             status_code=503,
@@ -186,21 +185,31 @@ async def recommend_assessments(request: RecommendRequest):
 
         logger.info(f"Recommendation query: {request.query[:80]}...")
 
-        # ⚡ Optimized pipeline call (LLM disabled)
-        result = _pipeline(
-            query=request.query,
-            max_results=max_results,
-            min_results=1,
-            retrieval_top_k=10,   # reduced workload
-            use_llm=False         # disable slow LLM calls
+        # Run pipeline safely in background thread with timeout
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                _pipeline,
+                query=request.query,
+                max_results=max_results,
+                min_results=1,
+                retrieval_top_k=5,   # lighter workload
+                use_llm=False        # disable slow LLM calls
+            ),
+            timeout=15
         )
 
-        assessments = result.get("recommended_assessments", [])
-
-        assessments = assessments[:10]
+        assessments = result.get("recommended_assessments", [])[:10]
 
         return RecommendResponse(
             recommended_assessments=assessments
+        )
+
+    except asyncio.TimeoutError:
+
+        logger.error("Recommendation pipeline timed out")
+
+        return RecommendResponse(
+            recommended_assessments=[]
         )
 
     except Exception as e:
