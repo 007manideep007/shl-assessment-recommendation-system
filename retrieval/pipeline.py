@@ -209,7 +209,12 @@ def recommend(
         is_multi_domain=is_multi_domain,
         max_results=max_results,
         min_results=min_results,
-    )
+)
+
+    # Fallback if balancing removed everything
+    if not final:
+        logger.warning("Balancer removed all results — falling back to raw retrieval")
+        final = reranked[:max_results]
 
     # --------------------------------------------------
     # Step 6 — Validate result balance
