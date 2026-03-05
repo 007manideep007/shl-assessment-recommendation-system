@@ -107,13 +107,11 @@ class HybridSearchEngine:
         ranked_indices = np.argsort(combined)[::-1][:top_k]
 
         results = []
-
         for idx in ranked_indices:
 
-                result = dict(self.assessments[idx])
-                result["_score"] = float(combined[idx])
-
-                results.append(result)
+            result = dict(self.assessments[idx])
+            result["_score"] = float(combined[idx])
+            results.append(result)
 
         return results
     
