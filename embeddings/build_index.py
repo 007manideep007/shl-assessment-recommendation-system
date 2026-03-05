@@ -110,16 +110,13 @@ class HybridSearchEngine:
 
         for idx in ranked_indices:
 
-            if combined[idx] <= 0:
-                break
+                result = dict(self.assessments[idx])
+                result["_score"] = float(combined[idx])
 
-            result = dict(self.assessments[idx])
-            result["_score"] = float(combined[idx])
-
-            results.append(result)
+                results.append(result)
 
         return results
-
+    
 
 def build_faiss_index(embeddings: np.ndarray):
 
